@@ -1,6 +1,5 @@
 import {
 	Editor,
-	MarkdownView,
 	Menu,
 	Notice,
 	Plugin,
@@ -8,7 +7,11 @@ import {
 	TFolder,
 	WorkspaceLeaf,
 } from "obsidian";
-import { resolveFolderFromLink } from "./backlinkIndex";
+import {
+	FOLDER_NODE_PREFIX,
+	folderNodeId,
+	resolveFolderFromLink,
+} from "./backlinkIndex";
 import { FolderBacklinksView, VIEW_TYPE_FOLDER_BACKLINKS } from "./backlinksView";
 import { FolderSuggestModal } from "./folderSuggest";
 import {
@@ -82,32 +85,25 @@ export default class FolderBacklinksPlugin extends Plugin {
 			})
 		);
 
-		// Intercept clicks on internal links that point to folders. Obsidian
-		// treats these as unresolved links, so without this they would create
-		// a new note named after the folder.
-		this.registerDomEvent(
-			document,
-			"click",
-			(evt: MouseEvent) => {
-				const target = evt.target as HTMLElement;
-				const linkEl = target.closest("a.internal-link, .cm-underline");
-				if (!linkEl) return;
+		// Intercept every internal link open. Obsidian routes all of them
+		// (reading mode, live preview, Cmd+click) through
+		// workspace.openLinkText, and for a link pointing at a folder it
+		// would otherwise create a new note named after the folder.
+		this.patchOpenLinkText();
 
-				const href =
-					linkEl.getAttribute("data-href") ??
-					this.linkTextFromLivePreview(linkEl as HTMLElement);
-				if (!href) return;
-
-				const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
-				const folder = resolveFolderFromLink(this.app, href, sourcePath);
-				if (!folder) return;
-
-				evt.preventDefault();
-				evt.stopPropagation();
-				void this.handleFolderLinkClick(folder);
-			},
-			{ capture: true }
+		// Rename folder links in the unresolved-links table so the graph view
+		// shows them as labeled folder nodes instead of blank dots.
+		this.registerEvent(
+			this.app.metadataCache.on("resolve", (file) => {
+				if (!this.settings.showFolderNodesInGraph) return;
+				this.decorateUnresolvedFolderLinks(file.path);
+			})
 		);
+		this.app.workspace.onLayoutReady(() => {
+			if (this.settings.showFolderNodesInGraph) {
+				this.decorateUnresolvedFolderLinks();
+			}
+		});
 
 		// In reading mode, mark folder links as resolved so they are not
 		// styled like broken links.
@@ -131,19 +127,65 @@ export default class FolderBacklinksPlugin extends Plugin {
 	}
 
 	buildFolderLink(folder: TFolder): string {
-		const path = this.settings.trailingSlash ? `${folder.path}/` : folder.path;
+		// The trailing slash is what marks the link as a folder link.
+		const path = `${folder.path}/`;
 		if (this.settings.useFolderNameAsAlias && folder.path !== folder.name) {
 			return `[[${path}|${folder.name}]]`;
 		}
 		return `[[${path}]]`;
 	}
 
-	private linkTextFromLivePreview(el: HTMLElement): string | null {
-		// In live preview the clicked span holds the rendered link text; for
-		// [[path|alias]] links the underlying href is not in the DOM, so we
-		// fall back to the visible text, which works for plain folder links.
-		const text = el.textContent?.trim();
-		return text && text.length > 0 ? text : null;
+	/**
+	 * Rewrites folder links in metadataCache.unresolvedLinks (public API)
+	 * from "Folder/" to "📁 Folder". The graph view builds its nodes from
+	 * this table, so folder links get a readable, folder-marked label.
+	 */
+	private decorateUnresolvedFolderLinks(sourcePath?: string): void {
+		const all = this.app.metadataCache.unresolvedLinks;
+		const paths = sourcePath ? [sourcePath] : Object.keys(all);
+
+		for (const path of paths) {
+			const links = all[path];
+			if (!links) continue;
+			for (const linktext of Object.keys(links)) {
+				if (
+					linktext.startsWith(FOLDER_NODE_PREFIX) ||
+					!linktext.endsWith("/")
+				) {
+					continue;
+				}
+				const folder = resolveFolderFromLink(this.app, linktext, path);
+				if (!folder) continue;
+				const id = folderNodeId(folder);
+				links[id] = (links[id] ?? 0) + links[linktext];
+				delete links[linktext];
+			}
+		}
+	}
+
+	private patchOpenLinkText(): void {
+		const plugin = this;
+		const workspace = this.app.workspace;
+		const original = workspace.openLinkText;
+
+		workspace.openLinkText = function (
+			this: typeof workspace,
+			linktext: string,
+			sourcePath: string,
+			...rest: unknown[]
+		): Promise<void> {
+			const folder = resolveFolderFromLink(plugin.app, linktext, sourcePath);
+			if (folder) {
+				return plugin.handleFolderLinkClick(folder);
+			}
+			return (
+				original as unknown as (...args: unknown[]) => Promise<void>
+			).call(this, linktext, sourcePath, ...rest);
+		} as typeof workspace.openLinkText;
+
+		this.register(() => {
+			workspace.openLinkText = original;
+		});
 	}
 
 	private chooseFolderAndShowBacklinks(): void {

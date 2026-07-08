@@ -5,14 +5,14 @@ export type FolderLinkClickAction = "reveal" | "backlinks" | "both";
 
 export interface FolderBacklinksSettings {
 	clickAction: FolderLinkClickAction;
-	trailingSlash: boolean;
 	useFolderNameAsAlias: boolean;
+	showFolderNodesInGraph: boolean;
 }
 
 export const DEFAULT_SETTINGS: FolderBacklinksSettings = {
 	clickAction: "both",
-	trailingSlash: true,
 	useFolderNameAsAlias: true,
+	showFolderNodesInGraph: true,
 };
 
 export class FolderBacklinksSettingTab extends PluginSettingTab {
@@ -43,15 +43,15 @@ export class FolderBacklinksSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Append trailing slash to inserted folder links")
+			.setName("Show folder nodes in graph view")
 			.setDesc(
-				"Inserts links as [[Folder/]] instead of [[Folder]]. This avoids clashes when a note has the same name as a folder."
+				"Display folder links in the graph as labeled \u{1F4C1} nodes instead of blank unresolved dots. Reload Obsidian after turning this off."
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.trailingSlash)
+					.setValue(this.plugin.settings.showFolderNodesInGraph)
 					.onChange(async (value) => {
-						this.plugin.settings.trailingSlash = value;
+						this.plugin.settings.showFolderNodesInGraph = value;
 						await this.plugin.saveSettings();
 					})
 			);
