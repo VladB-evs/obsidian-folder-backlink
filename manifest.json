@@ -1,7 +1,7 @@
 {
 	"id": "folder-backlinks",
 	"name": "Folder Backlinks",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "1.7.2",
 	"description": "Link to folders from your notes and see which notes reference each folder, just like backlinks for files.",
 	"author": "Vlad Bacila",
