@@ -47,13 +47,13 @@ export default class FolderBacklinksPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "open-folder-backlinks",
+			id: "show-backlinks-for-folder",
 			name: "Open backlinks for a folder",
 			callback: () => this.chooseFolderAndShowBacklinks(),
 		});
 
 		this.addCommand({
-			id: "open-current-folder-backlinks",
+			id: "show-backlinks-for-current-folder",
 			name: "Open backlinks for current note's folder",
 			checkCallback: (checking) => {
 				const file = this.app.workspace.getActiveFile();
@@ -164,24 +164,28 @@ export default class FolderBacklinksPlugin extends Plugin {
 	}
 
 	private patchOpenLinkText(): void {
-		const plugin = this;
 		const workspace = this.app.workspace;
 		const original = workspace.openLinkText;
 
-		workspace.openLinkText = function (
-			this: typeof workspace,
-			linktext: string,
-			sourcePath: string,
-			...rest: unknown[]
-		): Promise<void> {
-			const folder = resolveFolderFromLink(plugin.app, linktext, sourcePath);
+		const patched: typeof workspace.openLinkText = (
+			linktext,
+			sourcePath,
+			newLeaf,
+			openViewState
+		) => {
+			const folder = resolveFolderFromLink(this.app, linktext, sourcePath);
 			if (folder) {
-				return plugin.handleFolderLinkClick(folder);
+				return this.handleFolderLinkClick(folder);
 			}
-			return (
-				original as unknown as (...args: unknown[]) => Promise<void>
-			).call(this, linktext, sourcePath, ...rest);
-		} as typeof workspace.openLinkText;
+			return original.call(
+				workspace,
+				linktext,
+				sourcePath,
+				newLeaf,
+				openViewState
+			);
+		};
+		workspace.openLinkText = patched;
 
 		this.register(() => {
 			workspace.openLinkText = original;
@@ -236,7 +240,10 @@ export default class FolderBacklinksPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const data = (await this.loadData()) as
+			| Partial<FolderBacklinksSettings>
+			| null;
+		this.settings = { ...DEFAULT_SETTINGS, ...data };
 	}
 
 	async saveSettings(): Promise<void> {

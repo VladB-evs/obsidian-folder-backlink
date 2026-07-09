@@ -119,7 +119,7 @@ export class FolderBacklinksView extends ItemView {
 		}
 
 		const listEl = container.createDiv({ cls: "folder-backlinks-list" });
-		for (const [path, fileMatches] of grouped) {
+		for (const fileMatches of grouped.values()) {
 			const file = fileMatches[0].sourceFile;
 			const itemEl = listEl.createDiv({ cls: "folder-backlinks-item" });
 

@@ -81,8 +81,3 @@
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 }
-
-/* Folder links in reading mode: styled as valid links, with a subtle marker */
-.folder-backlinks-link {
-	text-decoration-style: solid;
-}
